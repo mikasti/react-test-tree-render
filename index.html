@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TreeRender</title>
+    <style>
+        :root {
+            --bg-color: #f4f4f9;
+            --container-bg: #ffffff;
+            --text-color: #333333;
+            --primary: #007bff;
+            --primary-hover: #0056b3;
+            --console-bg: #1e1e1e;
+            --console-text: #d4d4d4;
+            --error-text: #ff5555;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            padding: 2rem;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+        }
+
+        .app-container {
+            background: var(--container-bg);
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 800px;
+        }
+
+        h1 {
+            margin-top: 0;
+        }
+
+        .description {
+            margin-bottom: 1.5rem;
+            color: #555;
+            line-height: 1.5;
+        }
+
+        textarea {
+            width: 100%;
+            height: 80px;
+            padding: 12px;
+            box-sizing: border-box;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: vertical;
+        }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: background 0.2s;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background: var(--primary-hover);
+        }
+
+        .output-box {
+            margin-top: 25px;
+            padding: 20px;
+            background: var(--console-bg);
+            border-radius: 6px;
+            overflow-x: auto;
+            min-height: 50px;
+            display: none;
+        }
+
+        pre {
+            margin: 0;
+            font-size: 16px;
+            line-height: 1.2;
+            color: var(--console-text);
+        }
+
+        .error {
+            color: var(--error-text);
+            font-weight: bold;
+        }
+
+        .test-logs {
+            margin-top: 2rem;
+            font-size: 12px;
+            color: #777;
+            border-top: 1px solid #eee;
+            padding-top: 1rem;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="app-container">
+        <h1>TreeRender</h1>
+        <p class="description">
+            Введите строковое представление дерева для отрисовки.<br>
+            Например: <code>(1 (2 (4 5 6 (7) 108 (9)) 3))</code>
+        </p>
+
+        <label for="treeInput"></label>
+        <textarea id="treeInput" placeholder="(1 (2 (4 5 6 (7) 108 (9)) 3))">(1 (2 (4 5 6 (7) 108 (9)) 3))</textarea>
+        <button id="renderBtn">Отрисовать</button>
+
+        <div class="output-box" id="outputBox">
+            <pre><code id="treeOutput"></code></pre>
+        </div>
+
+        <div class="test-logs" id="testLogs">
+        </div>
+    </div>
+
+    <script>
+        function extractNodesAndBrackets(str) {
+            return str.match(/[()]|[^\s()]+/g) || [];
+        }
+
+        function validateBrackets(bracketsArr) {
+            if (bracketsArr[0] !== '(') throw new Error("Ожидалась '('");
+
+            let bracketsBalance = 0;
+            let zeroBalanceIndex = -1;
+            for (let i = 0; i < bracketsArr.length; i++) {
+                const curElement = bracketsArr[i];
+                if (curElement === '(') {
+                    bracketsBalance++;
+                    if (bracketsArr[i + 1] === ')') {
+                        throw new Error("Пустой узел () недопустим");
+                    }
+                }
+                else if (curElement === ')') {
+                    bracketsBalance--;
+                }
+
+                if (bracketsBalance < 0) throw new Error("Неверный баланс скобок");
+
+                if (bracketsBalance === 0 && zeroBalanceIndex === -1) {
+                    zeroBalanceIndex = i;
+                }
+            }
+            if (bracketsBalance !== 0) throw new Error("Неверный баланс скобок");
+
+            if (zeroBalanceIndex !== -1 && zeroBalanceIndex < bracketsArr.length - 1) {
+                throw new Error("Лишние данные после описания дерева");
+            }
+        }
+
+        function createTree(arr) {
+            arr.shift();
+
+            const nodes = [];
+            while (arr[0] !== ')') {
+                nodes.push({
+                    value: arr.shift(),
+                    children: arr[0] === '(' ? createTree(arr) : []
+                });
+            }
+
+            arr.shift();
+            return nodes;
+        }
+
+
+        function treeRender(nodes, prefix = "") {
+            if (!nodes || nodes.length === 0) return [];
+
+            const maxLen = nodes.reduce((max, n) => Math.max(max, n.value.length), 0);
+            const lines = [];
+
+            for (let i = 0; i < nodes.length; i++) {
+                const node = nodes[i];
+                const isLast = (i === nodes.length - 1);
+
+                let line = prefix + node.value;
+                if (node.children && node.children.length > 0) {
+                    line += "-".repeat(maxLen - node.value.length) + "---+";
+                }
+                lines.push(line);
+
+                if (node.children && node.children.length > 0) {
+                    const childPrefix = prefix + (isLast ? " " : "|") + " ".repeat(maxLen + 2);
+                    lines.push(...treeRender(node.children, childPrefix));
+                }
+            }
+
+            return lines;
+        }
+
+
+
+        function processInput(inputStr) {
+            const inputArr = extractNodesAndBrackets(inputStr);
+            if (inputArr.length === 0) throw new Error("Ввод пуст");
+
+            validateBrackets(inputArr);
+
+            const tree = createTree([...inputArr]);
+
+            return treeRender(tree).join("\n");
+        }
+
+
+        const btn = document.getElementById('renderBtn');
+        const inputEl = document.getElementById('treeInput');
+        const outputBox = document.getElementById('outputBox');
+        const outputEl = document.getElementById('treeOutput');
+
+        let lastInput = null;
+
+        btn.addEventListener('click', () => {
+            const val = inputEl.value.trim();
+            if (val === lastInput) {
+                return;
+            }
+
+            outputBox.style.display = 'block';
+
+            try {
+                const result = processInput(val);
+                outputEl.className = "";
+                outputEl.textContent = result;
+                lastInput = val;
+            } catch (err) {
+                outputEl.className = "error";
+                outputEl.textContent = err.message;
+                lastInput = val;
+            }
+        });
+
+
+        (function runTests() {
+            const testContainer = document.getElementById('testLogs');
+            testContainer.innerHTML = "<strong>Запуск встроенных тестов...</strong><br>";
+
+            const expectedOutput =
+                `1---+
+    2---+
+    |   4
+    |   5
+    |   6-----+
+    |   |     7
+    |   108---+
+    |         9
+    3`;
+
+            const testCases = [
+                { name: "Базовый тест из ТЗ", input: "(1 (2 (4 5 6 (7) 108 (9)) 3))", expected: expectedOutput },
+                { name: "Ошибка синтаксиса", input: "(1 (2)", expectError: true },
+                { name: "Один узел", input: "(100)", expected: "100" },
+                { name: "Пустой ввод", input: "", expectError: true },
+                { name: "Только скобки", input: "()", expectError: true },
+                { name: "Лишние данные после списка", input: "(1 (2)) 3", expectError: true },
+                { name: "Лишние закрывающие скобки", input: "(1 (2)))", expectError: true },
+                { name: "Глубокая вложенность", input: "(1 (2 (3 (4 (5)))))", expected: "1---+\n    2---+\n        3---+\n            4---+\n                5" }
+            ];
+
+            let passed = 0;
+            testCases.forEach((testCase, idx) => {
+                try {
+                    const result = processInput(testCase.input);
+                    if (testCase.expectError) {
+                        testContainer.innerHTML += `<span style="color:red">Тест ${idx + 1} (${testCase.name}) провален: Ожидалась ошибка, но код отработал.</span><br>`;
+                    } else if (result === testCase.expected) {
+                        passed++;
+                        testContainer.innerHTML += `<span style="color:green">✔ Тест ${idx + 1} (${testCase.name}) успешно пройден.</span><br>`;
+                    } else {
+                        testContainer.innerHTML += `<span style="color:red">Тест ${idx + 1} (${testCase.name}) провален: Вывод не совпал с ожидаемым.</span><br>`;
+                    }
+                } catch (e) {
+                    if (testCase.expectError) {
+                        passed++;
+                        testContainer.innerHTML += `<span style="color:green">✔ Тест ${idx + 1} (${testCase.name}) успешно пройден (ошибка корректно перехвачена).</span><br>`;
+                    } else {
+                        testContainer.innerHTML += `<span style="color:red">Тест ${idx + 1} (${testCase.name}) провален с ошибкой: ${e.message}</span><br>`;
+                    }
+                }
+            });
+            testContainer.innerHTML += `<em>Итог: ${passed} из ${testCases.length} тестов пройдено.</em>`;
+        })();
+
+    </script>
+</body>
+
+</html>
